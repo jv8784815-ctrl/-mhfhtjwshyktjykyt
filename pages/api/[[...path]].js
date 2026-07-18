@@ -6,7 +6,7 @@ let cacheTime = 0;
 
 async function getBackend() {
   const now = Date.now();
-  if (cachedUrl && now - cacheTime < 300000) return cachedUrl; // Cache 5 min
+  if (cachedUrl && now - cacheTime < 300000) return cachedUrl;
   
   try {
     const res = await fetch(GIST_URL);
@@ -24,23 +24,34 @@ export default async function handler(req, res) {
   const backend = await getBackend();
   if (!backend) return res.status(503).json({ error: 'Servidor no disponible' });
 
-  // Reconstruir la ruta completa
   const path = req.query.path ? req.query.path.join('/') : '';
   const targetUrl = `${backend}/${path}`;
+
+  // Headers falsos para evitar bloqueo de Cloudflare
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    'Referer': backend + '/',
+    'Origin': backend,
+  };
+
+  // Solo agregar Content-Type si hay body
+  if (req.body) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   try {
     const response = await fetch(targetUrl, {
       method: req.method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...req.headers,
-      },
+      headers: headers,
       body: req.body ? JSON.stringify(req.body) : undefined,
     });
 
     const data = await response.json();
     res.status(response.status).json(data);
   } catch (err) {
-    res.status(500).json({ error: 'Error de proxy' });
+    console.error('Proxy Error:', err.message);
+    res.status(500).json({ error: 'Error de proxy: ' + err.message });
   }
 }
