@@ -24,22 +24,22 @@ export default async function handler(req, res) {
   const backend = await getBackend();
   if (!backend) return res.status(503).json({ error: 'Servidor no disponible' });
 
-  const path = req.query.path ? req.query.path.join('/') : '';
+  // Reconstruir ruta eliminando la primera parte 'api' si existe
+  let pathSegments = req.query.path || [];
+  if (Array.isArray(pathSegments) && pathSegments[0] === 'api') {
+    pathSegments = pathSegments.slice(1);
+  }
+  
+  const path = pathSegments.join('/');
   const targetUrl = `${backend}/${path}`;
+  
+  console.log(`[PROXY] Forwarding: ${req.method} ${targetUrl}`); // Log para depurar
 
-  // Headers que simulan un navegador Chrome real
   const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
     'Referer': `${backend}/`,
     'Origin': backend,
-    'Sec-Ch-Ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126"',
-    'Sec-Ch-Ua-Mobile': '?0',
-    'Sec-Ch-Ua-Platform': '"Windows"',
-    'Sec-Fetch-Dest': 'empty',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Site': 'same-origin',
   };
 
   if (req.body) {
@@ -55,19 +55,11 @@ export default async function handler(req, res) {
 
     const contentType = response.headers.get('content-type') || '';
     
-    // Si Cloudflare devuelve HTML en vez de JSON, detectar y reportar
     if (!contentType.includes('application/json')) {
       const text = await response.text();
-      console.error(`[PROXY] Respuesta no-JSON recibida (${response.status}): ${text.substring(0, 200)}`);
-      
-      if (text.includes('challenge-platform') || text.includes('verifying') || text.includes('cloudflare')) {
-        return res.status(502).json({ 
-          error: 'Cloudflare bloqueó la petición. Intenta nuevamente en unos segundos.' 
-        });
-      }
-      
+      console.error(`[PROXY] No-JSON (${response.status}): ${text.substring(0, 200)}`);
       return res.status(response.status).json({ 
-        error: 'El servidor devolvió una respuesta inesperada',
+        error: 'Respuesta inesperada del servidor',
         detail: text.substring(0, 300)
       });
     }
