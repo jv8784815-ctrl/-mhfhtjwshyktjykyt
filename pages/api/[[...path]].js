@@ -13,10 +13,9 @@ async function getBackend() {
     const data = await res.json();
     cachedUrl = data.tunnel?.replace(/\/$/, '');
     cacheTime = now;
-    console.log(`[PROXY] Backend URL actualizada: ${cachedUrl}`);
     return cachedUrl;
   } catch (e) {
-    console.error('Error leyendo Gist:', e.message);
+    console.error('Error Gist:', e.message);
     return cachedUrl || null;
   }
 }
@@ -31,15 +30,17 @@ export default async function handler(req, res) {
   let segments = req.query.path || [];
   if (!Array.isArray(segments)) segments = [segments];
   
-  // Eliminar 'api' si es el primer segmento (Next.js lo incluye por defecto)
+  // Eliminar 'api' si es el primer segmento
   if (segments.length > 0 && segments[0] === 'api') {
     segments = segments.slice(1);
   }
   
   const cleanPath = segments.join('/');
   
-  // ️ CORRECCIÓN CLAVE: Agregar /api/ explícitamente para Flask
-  const targetUrl = `${backend}/api/${cleanPath}`;
+  // ️ CORRECCIÓN: Incluir query params explícitamente
+  const baseUrl = `${backend}/api/${cleanPath}`;
+  const queryParams = new URLSearchParams(req.query).toString();
+  const targetUrl = queryParams ? `${baseUrl}?${queryParams}` : baseUrl;
   
   console.log(`🚀 Forwarding to: ${targetUrl}`);
 
@@ -63,18 +64,12 @@ export default async function handler(req, res) {
 
     const contentType = response.headers.get('content-type') || '';
     
-    // Si Cloudflare o Flask devuelven HTML en vez de JSON
     if (!contentType.includes('application/json')) {
       const text = await response.text();
-      console.error(`❌ Respuesta no-JSON (${response.status}): ${text.substring(0, 200)}`);
-      
-      if (text.includes('challenge-platform') || text.includes('verifying')) {
-        return res.status(502).json({ error: 'Cloudflare bloqueó la petición. Intenta de nuevo.' });
-      }
-      
+      console.error(` No-JSON (${response.status}): ${text.substring(0, 200)}`);
       return res.status(response.status).json({ 
-        error: 'El servidor devolvió una respuesta inesperada',
-        detail: text.substring(0, 300)
+        error: 'Respuesta inesperada', 
+        detail: text.substring(0, 300) 
       });
     }
 
@@ -82,7 +77,7 @@ export default async function handler(req, res) {
     res.status(response.status).json(data);
     
   } catch (err) {
-    console.error('❌ Error de conexión proxy:', err.message);
+    console.error('❌ Proxy Error:', err.message);
     res.status(500).json({ error: 'Error interno del proxy' });
   }
 }
