@@ -1,4 +1,5 @@
 // pages/api/[[...path]].js
+console.log("🔥 EL PROXY SE ESTÁ EJECUTANDO");
 const GIST_URL = 'https://gist.githubusercontent.com/jv8784815-ctrl/c520f9db26b1b30f2d58cd761921ed76/raw/anime-tunnel.json';
 
 let cachedUrl = null;
