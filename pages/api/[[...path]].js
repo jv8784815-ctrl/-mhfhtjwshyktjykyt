@@ -24,20 +24,24 @@ export default async function handler(req, res) {
   const backend = await getBackend();
   if (!backend) return res.status(503).json({ error: 'Servidor no disponible' });
 
-  // Reconstruir ruta eliminando la primera parte 'api' si existe
-  let pathSegments = req.query.path || [];
-  if (Array.isArray(pathSegments) && pathSegments[0] === 'api') {
-    pathSegments = pathSegments.slice(1);
+  // Obtener segmentos de ruta
+  let segments = req.query.path || [];
+  if (!Array.isArray(segments)) segments = [segments];
+  
+  // Eliminar 'api' si está presente (Next.js lo incluye por defecto)
+  if (segments.length > 0 && segments[0] === 'api') {
+    segments = segments.slice(1);
   }
   
-  const path = pathSegments.join('/');
-  const targetUrl = `${backend}/${path}`;
+  // Construir ruta limpia
+  const cleanPath = segments.join('/');
+  const targetUrl = `${backend}/${cleanPath}`;
   
-  console.log(`[PROXY] Forwarding: ${req.method} ${targetUrl}`); // Log para depurar
+  console.log(`[PROXY] ${req.method} -> ${targetUrl}`);
 
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
+    'Accept': 'application/json',
     'Referer': `${backend}/`,
     'Origin': backend,
   };
@@ -57,9 +61,9 @@ export default async function handler(req, res) {
     
     if (!contentType.includes('application/json')) {
       const text = await response.text();
-      console.error(`[PROXY] No-JSON (${response.status}): ${text.substring(0, 200)}`);
+      console.error(`[PROXY] HTML recibido (${response.status}): ${text.substring(0, 150)}`);
       return res.status(response.status).json({ 
-        error: 'Respuesta inesperada del servidor',
+        error: 'El servidor devolvió HTML en lugar de JSON',
         detail: text.substring(0, 300)
       });
     }
@@ -68,7 +72,7 @@ export default async function handler(req, res) {
     res.status(response.status).json(data);
     
   } catch (err) {
-    console.error('[PROXY] Error:', err.message);
+    console.error('[PROXY] Error de conexión:', err.message);
     res.status(500).json({ error: 'Error interno del proxy' });
   }
 }
