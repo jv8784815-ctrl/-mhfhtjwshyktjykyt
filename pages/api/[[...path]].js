@@ -27,16 +27,21 @@ export default async function handler(req, res) {
   const path = req.query.path ? req.query.path.join('/') : '';
   const targetUrl = `${backend}/${path}`;
 
-  // Headers falsos para evitar bloqueo de Cloudflare
+  // Headers que simulan un navegador Chrome real
   const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0',
     'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-    'Referer': backend + '/',
+    'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Referer': `${backend}/`,
     'Origin': backend,
+    'Sec-Ch-Ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
   };
 
-  // Solo agregar Content-Type si hay body
   if (req.body) {
     headers['Content-Type'] = 'application/json';
   }
@@ -48,10 +53,30 @@ export default async function handler(req, res) {
       body: req.body ? JSON.stringify(req.body) : undefined,
     });
 
+    const contentType = response.headers.get('content-type') || '';
+    
+    // Si Cloudflare devuelve HTML en vez de JSON, detectar y reportar
+    if (!contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error(`[PROXY] Respuesta no-JSON recibida (${response.status}): ${text.substring(0, 200)}`);
+      
+      if (text.includes('challenge-platform') || text.includes('verifying') || text.includes('cloudflare')) {
+        return res.status(502).json({ 
+          error: 'Cloudflare bloqueó la petición. Intenta nuevamente en unos segundos.' 
+        });
+      }
+      
+      return res.status(response.status).json({ 
+        error: 'El servidor devolvió una respuesta inesperada',
+        detail: text.substring(0, 300)
+      });
+    }
+
     const data = await response.json();
     res.status(response.status).json(data);
+    
   } catch (err) {
-    console.error('Proxy Error:', err.message);
-    res.status(500).json({ error: 'Error de proxy: ' + err.message });
+    console.error('[PROXY] Error:', err.message);
+    res.status(500).json({ error: 'Error interno del proxy' });
   }
 }
