@@ -10,11 +10,31 @@ export default function VideoPage() {
 
   useEffect(() => {
     if (router.isReady && id) {
+      // 1. Leer parámetros y configurar título
       const params = new URLSearchParams(window.location.search);
-      setTitle(params.get('title') || `Episodio ${id}`);
+      const videoTitle = params.get('title') || `Episodio ${id}`;
+      setTitle(videoTitle);
       
-      // RUTA RELATIVA: Apunta al proxy de Vercel, NO a Cloudflare
+      // 2. Construir ruta relativa al proxy de Vercel
       setVideoSrc(`/api/anime/video/${id}`);
+
+      // 3. TRUCO DE RESTAURACIÓN DE URL
+      // Si el navegador cambió la URL a trycloudflare.com, la corregimos
+      // inmediatamente sin recargar la página.
+      const currentPath = `/video/${id}`;
+      if (window.location.pathname !== currentPath) {
+        window.history.replaceState(null, '', `${currentPath}?title=${encodeURIComponent(videoTitle)}`);
+      }
+
+      // 4. Escuchar cambios de URL por si el navegador lo intenta de nuevo
+      const handleUrlChange = () => {
+        if (window.location.pathname !== currentPath) {
+          window.history.replaceState(null, '', `${currentPath}?title=${encodeURIComponent(videoTitle)}`);
+        }
+      };
+      
+      window.addEventListener('popstate', handleUrlChange);
+      return () => window.removeEventListener('popstate', handleUrlChange);
     }
   }, [router.isReady, id]);
 
@@ -27,6 +47,7 @@ export default function VideoPage() {
       display: 'flex', flexDirection: 'column'
     }}>
       
+      {/* HEADER FIJO ESTILO TETO */}
       <header style={{
         background: 'linear-gradient(90deg, #1a0b12, #2a0f1a)',
         padding: '1rem 2rem', borderBottom: '2px solid #ff0055',
@@ -37,6 +58,7 @@ export default function VideoPage() {
         </h1>
       </header>
 
+      {/* REPRODUCTOR NATIVO */}
       <main style={{ flex: 1, maxWidth: '1200px', margin: '2rem auto', padding: '0 2rem', width: '100%', boxSizing: 'border-box' }}>
         
         <div style={{
@@ -62,6 +84,7 @@ export default function VideoPage() {
           )}
         </div>
 
+        {/* INFORMACIÓN DEL EPISODIO */}
         <div style={{ paddingLeft: '1rem', borderLeft: '4px solid #ff0055' }}>
           <h2 style={{ margin: '0 0 0.5rem 0', color: '#ff6699', fontFamily: 'monospace' }}>
             {title}
