@@ -34,15 +34,22 @@ export default async function handler(req, res) {
   const queryParams = new URLSearchParams(req.query).toString();
   const targetUrl = queryParams ? `${baseUrl}?${queryParams}` : baseUrl;
 
-  // Para rutas de video, usamos REDIRECCIÓN DIRECTA (302)
-  // Esto evita el timeout de 60s de Vercel y permite streaming directo desde tu PC
+  //  PARA VIDEOS: Redirección 302 DIRECTA + Headers Anti-Bloqueo
   if (cleanPath.startsWith('anime/video')) {
     console.log(` Redirecting video to: ${targetUrl}`);
-    res.writeHead(302, { Location: targetUrl });
+    
+    // Estos headers ayudan a que el navegador maneje mejor la conexión directa
+    // y evitan que Cloudflare interprete mal las peticiones de rango
+    res.writeHead(302, {
+      Location: targetUrl,
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+      'Access-Control-Allow-Origin': '*'
+    });
     return res.end();
   }
 
-  // Para búsquedas y datos JSON, seguimos usando proxy normal
+  // 🔍 PARA BÚSQUEDAS/DATOS: Proxy normal con JSON
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     'Accept': 'application/json',
@@ -66,7 +73,7 @@ export default async function handler(req, res) {
       return res.status(response.status).json(data);
     }
 
-    // Fallback por si acaso llega otro tipo de respuesta
+    // Fallback seguro
     const text = await response.text();
     return res.status(response.status).send(text);
 
