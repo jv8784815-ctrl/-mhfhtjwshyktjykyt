@@ -1,100 +1,87 @@
 // pages/watch.js
-import Head from 'next/head';
+import { useEffect, useState } from 'react';
 
 export default function WatchPage() {
+  const [videoSrc, setVideoSrc] = useState('');
+  const [title, setTitle] = useState('Cargando episodio...');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    const videoTitle = params.get('title') || 'Episodio sin título';
+    
+    if (id) {
+      // ️ TRUCO CLAVE: Usar ruta RELATIVA. 
+      // El navegador completará esto automáticamente con frikibot-anime.vercel.app
+      // NUNCA aparecerá trycloudflare.com en la barra de direcciones.
+      setVideoSrc(`/api/anime/video/${id}`);
+      setTitle(videoTitle);
+    }
+  }, []);
+
   return (
     <div style={{ 
       minHeight: '100vh', 
       backgroundColor: '#0d0509', 
       color: 'white', 
-      fontFamily: 'sans-serif',
-      display: 'flex',
-      flexDirection: 'column'
+      fontFamily: "'Segoe UI', sans-serif",
+      margin: 0, padding: 0, display: 'flex', flexDirection: 'column'
     }}>
-      <Head>
-        <title>FrikiBot - Reproductor Teto</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </Head>
-
-      {/* HEADER ROSA ESTILO TETO */}
+      
+      {/* HEADER FIJO ESTILO KASANE TETO */}
       <header style={{
         background: 'linear-gradient(90deg, #1a0b12 0%, #2a0f1a 100%)',
         padding: '1rem 2rem',
         borderBottom: '2px solid #ff0055',
         boxShadow: '0 0 15px rgba(255, 0, 85, 0.3)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px'
+        display: 'flex', alignItems: 'center', zIndex: 10, position: 'sticky', top: 0
       }}>
         <h1 style={{ 
-          margin: 0, 
-          color: '#ff0055', 
+          margin: 0, color: '#ff0055', 
           textShadow: '0 0 10px #ff0055',
-          fontSize: '1.5rem',
-          letterSpacing: '2px',
-          fontFamily: 'monospace' // Fallback si Orbitron no carga
+          fontSize: '1.5rem', letterSpacing: '2px', fontFamily: 'monospace'
         }}>
           FRIKIBOT 🍞
         </h1>
       </header>
 
-      {/* ÁREA DEL VIDEO */}
-      <main style={{ flex: 1, padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+      {/* ÁREA DE REPRODUCCIÓN CON IFRAME */}
+      <main style={{ flex: 1, maxWidth: '1200px', margin: '2rem auto', padding: '0 2rem', width: '100%', boxSizing: 'border-box' }}>
         
-        {/* CONTENEDOR DEL VIDEO CON BORDE ROSA */}
+        {/* Contenedor del Video con Marco Rosa */}
         <div style={{
-          width: '100%',
-          aspectRatio: '16/9',
-          background: '#000',
-          borderRadius: '12px',
-          overflow: 'hidden',
-          boxShadow: '0 0 30px rgba(255, 0, 85, 0.2)',
+          width: '100%', aspectRatio: '16/9', background: '#000',
+          borderRadius: '12px', overflow: 'hidden',
           border: '1px solid #ff6699',
+          boxShadow: '0 0 30px rgba(255, 0, 85, 0.2)',
           marginBottom: '1.5rem'
         }}>
-          <video 
-            id="player" 
-            controls 
-            autoPlay 
-            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-          >
-            <source src="" type="video/mp4" />
-          </video>
+          {videoSrc ? (
+            <iframe 
+              src={videoSrc} 
+              title="Reproductor FrikiBot"
+              style={{ width: '100%', height: '100%', border: 'none' }}
+              allow="autoplay; fullscreen"
+              allowFullScreen
+            />
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#ff0055' }}>
+              Cargando stream...
+            </div>
+          )}
         </div>
 
-        {/* INFORMACIÓN DEL EPISODIO */}
+        {/* Información del Episodio */}
         <div style={{ paddingLeft: '1rem', borderLeft: '4px solid #ff0055' }}>
-          <h2 id="title" style={{ margin: '0 0 0.5rem 0', color: '#ff6699', fontFamily: 'monospace' }}>
-            Cargando...
+          <h2 style={{ margin: '0 0 0.5rem 0', color: '#ff6699', fontFamily: 'monospace' }}>
+            {title}
           </h2>
           <p style={{ color: '#888', margin: 0, fontSize: '0.9rem' }}>
-            Reproduciendo desde FrikiBot Server 🍞
+            Reproduciendo desde FrikiBot Server 🍞 | URL Segura
           </p>
         </div>
 
       </main>
-
-      {/* SCRIPT PARA CARGAR EL VIDEO DINÁMICAMENTE */}
-      <script dangerouslySetInnerHTML={{__html: `
-        document.addEventListener('DOMContentLoaded', () => {
-          const params = new URLSearchParams(window.location.search);
-          const videoId = params.get('id');
-          const title = params.get('title') || 'Episodio sin título';
-          
-          const player = document.getElementById('player');
-          const titleLabel = document.getElementById('title');
-          
-          if (videoId) {
-            // Usa la misma URL base donde estás viendo la página
-            const baseUrl = window.location.origin;
-            player.src = \`\${baseUrl}/api/anime/video/\${videoId}\`;
-            titleLabel.innerText = title;
-          } else {
-            titleLabel.innerText = "⚠️ No se especificó ID de video";
-            titleLabel.style.color = "#ff0055";
-          }
-        });
-      `}} />
     </div>
   );
 }
