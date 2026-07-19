@@ -21,39 +21,27 @@ async function getBackend() {
 }
 
 export default async function handler(req, res) {
-  console.log("✅ PROXY EJECUTÁNDOSE | Query:", JSON.stringify(req.query));
-
   const backend = await getBackend();
   if (!backend) return res.status(503).json({ error: 'Servidor no disponible' });
 
-  // Obtener segmentos de ruta
+  // Reconstruir ruta
   let segments = req.query.path || [];
   if (!Array.isArray(segments)) segments = [segments];
-  
-  // Eliminar 'api' si es el primer segmento
-  if (segments.length > 0 && segments[0] === 'api') {
-    segments = segments.slice(1);
-  }
+  if (segments.length > 0 && segments[0] === 'api') segments = segments.slice(1);
   
   const cleanPath = segments.join('/');
-  
-  // ️ CORRECCIÓN: Incluir query params explícitamente
   const baseUrl = `${backend}/api/${cleanPath}`;
   const queryParams = new URLSearchParams(req.query).toString();
   const targetUrl = queryParams ? `${baseUrl}?${queryParams}` : baseUrl;
-  
-  console.log(`🚀 Forwarding to: ${targetUrl}`);
 
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
+    'Accept': '*/*', // ← Importante para videos
     'Referer': `${backend}/`,
     'Origin': backend,
   };
 
-  if (req.body) {
-    headers['Content-Type'] = 'application/json';
-  }
+  if (req.body) headers['Content-Type'] = 'application/json';
 
   try {
     const response = await fetch(targetUrl, {
@@ -63,19 +51,44 @@ export default async function handler(req, res) {
     });
 
     const contentType = response.headers.get('content-type') || '';
-    
-    if (!contentType.includes('application/json')) {
-      const text = await response.text();
-      console.error(` No-JSON (${response.status}): ${text.substring(0, 200)}`);
-      return res.status(response.status).json({ 
-        error: 'Respuesta inesperada', 
-        detail: text.substring(0, 300) 
+
+    //  SI ES VIDEO: Reenviar los bytes directamente sin parsear
+    if (contentType.includes('video/') || contentType.includes('octet-stream')) {
+      console.log(`🎬 Streaming video: ${targetUrl}`);
+      
+      // Copiar headers importantes del video
+      const videoHeaders = {};
+      ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'].forEach(h => {
+        const val = response.headers.get(h);
+        if (val) videoHeaders[h] = val;
       });
+
+      res.writeHead(response.status, videoHeaders);
+      
+      // Pipe directo del stream (eficiente para videos grandes)
+      const stream = response.body;
+      if (stream) {
+        for await (const chunk of stream) {
+          res.write(chunk);
+        }
+      }
+      return res.end();
     }
 
-    const data = await response.json();
-    res.status(response.status).json(data);
-    
+    // 📄 SI ES JSON: Parsear normalmente (búsquedas, estados, etc.)
+    if (contentType.includes('application/json')) {
+      const data = await response.json();
+      return res.status(response.status).json(data);
+    }
+
+    // ⚠️ OTRO TIPO DE RESPUESTA (HTML de error, etc.)
+    const text = await response.text();
+    console.error(`⚠️ Respuesta no esperada (${response.status}): ${text.substring(0, 200)}`);
+    return res.status(response.status).json({ 
+      error: 'Respuesta inesperada del servidor',
+      detail: text.substring(0, 300) 
+    });
+
   } catch (err) {
     console.error('❌ Proxy Error:', err.message);
     res.status(500).json({ error: 'Error interno del proxy' });
