@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   const backend = await getBackend();
   if (!backend) return res.status(503).json({ error: 'Servidor no disponible' });
 
-  // Reconstruir ruta
+  // Reconstruir ruta eliminando 'api' si está presente
   let segments = req.query.path || [];
   if (!Array.isArray(segments)) segments = [segments];
   if (segments.length > 0 && segments[0] === 'api') segments = segments.slice(1);
@@ -34,43 +34,17 @@ export default async function handler(req, res) {
   const queryParams = new URLSearchParams(req.query).toString();
   const targetUrl = queryParams ? `${baseUrl}?${queryParams}` : baseUrl;
 
-  // 🎬 PARA VIDEOS: STREAMING DIRECTO SIN REDIRECCIÓN
-  // Esto evita que el navegador cambie la URL a trycloudflare.com
+  // 🎬 PARA VIDEOS: REDIRECCIÓN 302 (Para evitar timeout de Vercel)
+  // Esta redirección será manejada internamente por el iframe, 
+  // manteniendo la URL principal de Vercel intacta.
   if (cleanPath.startsWith('anime/video')) {
-    console.log(`🎬 Streaming video: ${targetUrl}`);
-    
-    try {
-      const response = await fetch(targetUrl, {
-        method: req.method,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-          'Range': req.headers['range'] || '', // Permite seek/pausa
-          'Accept': '*/*',
-        },
-      });
-
-      // Reenviar headers críticos del video al navegador
-      const videoHeaders = {};
-      ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'].forEach(h => {
-        const val = response.headers.get(h);
-        if (val) videoHeaders[h] = val;
-      });
-
-      res.writeHead(response.status, videoHeaders);
-      
-      // Pipear bytes directamente (sin cargar todo en memoria)
-      const stream = response.body;
-      if (stream) {
-        for await (const chunk of stream) {
-          res.write(chunk);
-        }
-      }
-      return res.end();
-      
-    } catch (err) {
-      console.error('❌ Error streaming video:', err.message);
-      return res.status(500).json({ error: 'Error al transmitir video' });
-    }
+    console.log(`🎬 Redirecting video to: ${targetUrl}`);
+    res.writeHead(302, { 
+      Location: targetUrl,
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache'
+    });
+    return res.end();
   }
 
   // 🔍 PARA BÚSQUEDAS/DATOS JSON: Proxy normal
@@ -97,7 +71,7 @@ export default async function handler(req, res) {
       return res.status(response.status).json(data);
     }
 
-    // Fallback seguro para otros tipos
+    // Fallback seguro
     const text = await response.text();
     return res.status(response.status).send(text);
 
