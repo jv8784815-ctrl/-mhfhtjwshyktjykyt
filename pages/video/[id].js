@@ -13,8 +13,7 @@ export default function VideoPage() {
       const params = new URLSearchParams(window.location.search);
       setTitle(params.get('title') || `Episodio ${id}`);
       
-      // Ruta RELATIVA al mismo dominio (Vercel)
-      // El proxy hará el trabajo sucio detrás de escena
+      // RUTA RELATIVA: Apunta al proxy de Vercel, NO a Cloudflare
       setVideoSrc(`/api/anime/video/${id}`);
     }
   }, [router.isReady, id]);
@@ -40,7 +39,6 @@ export default function VideoPage() {
 
       <main style={{ flex: 1, maxWidth: '1200px', margin: '2rem auto', padding: '0 2rem', width: '100%', boxSizing: 'border-box' }}>
         
-        {/* ETIQUETA VIDEO NATIVA (Ahora segura porque no hay redirección) */}
         <div style={{
           width: '100%', aspectRatio: '16/9', background: '#000',
           borderRadius: '12px', overflow: 'hidden',
@@ -54,6 +52,7 @@ export default function VideoPage() {
               controls 
               autoPlay 
               playsInline
+              preload="metadata"
               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
           ) : (
