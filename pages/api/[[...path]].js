@@ -34,9 +34,18 @@ export default async function handler(req, res) {
   const queryParams = new URLSearchParams(req.query).toString();
   const targetUrl = queryParams ? `${baseUrl}?${queryParams}` : baseUrl;
 
+  // Para rutas de video, usamos REDIRECCIÓN DIRECTA (302)
+  // Esto evita el timeout de 60s de Vercel y permite streaming directo desde tu PC
+  if (cleanPath.startsWith('anime/video')) {
+    console.log(` Redirecting video to: ${targetUrl}`);
+    res.writeHead(302, { Location: targetUrl });
+    return res.end();
+  }
+
+  // Para búsquedas y datos JSON, seguimos usando proxy normal
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-    'Accept': '*/*', // ← Importante para videos
+    'Accept': 'application/json',
     'Referer': `${backend}/`,
     'Origin': backend,
   };
@@ -51,43 +60,15 @@ export default async function handler(req, res) {
     });
 
     const contentType = response.headers.get('content-type') || '';
-
-    //  SI ES VIDEO: Reenviar los bytes directamente sin parsear
-    if (contentType.includes('video/') || contentType.includes('octet-stream')) {
-      console.log(`🎬 Streaming video: ${targetUrl}`);
-      
-      // Copiar headers importantes del video
-      const videoHeaders = {};
-      ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'].forEach(h => {
-        const val = response.headers.get(h);
-        if (val) videoHeaders[h] = val;
-      });
-
-      res.writeHead(response.status, videoHeaders);
-      
-      // Pipe directo del stream (eficiente para videos grandes)
-      const stream = response.body;
-      if (stream) {
-        for await (const chunk of stream) {
-          res.write(chunk);
-        }
-      }
-      return res.end();
-    }
-
-    // 📄 SI ES JSON: Parsear normalmente (búsquedas, estados, etc.)
+    
     if (contentType.includes('application/json')) {
       const data = await response.json();
       return res.status(response.status).json(data);
     }
 
-    // ⚠️ OTRO TIPO DE RESPUESTA (HTML de error, etc.)
+    // Fallback por si acaso llega otro tipo de respuesta
     const text = await response.text();
-    console.error(`⚠️ Respuesta no esperada (${response.status}): ${text.substring(0, 200)}`);
-    return res.status(response.status).json({ 
-      error: 'Respuesta inesperada del servidor',
-      detail: text.substring(0, 300) 
-    });
+    return res.status(response.status).send(text);
 
   } catch (err) {
     console.error('❌ Proxy Error:', err.message);
