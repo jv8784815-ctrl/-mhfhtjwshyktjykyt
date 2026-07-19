@@ -34,22 +34,46 @@ export default async function handler(req, res) {
   const queryParams = new URLSearchParams(req.query).toString();
   const targetUrl = queryParams ? `${baseUrl}?${queryParams}` : baseUrl;
 
-  //  PARA VIDEOS: Redirección 302 DIRECTA + Headers Anti-Bloqueo
+  // 🎬 PARA VIDEOS: STREAMING DIRECTO SIN REDIRECCIÓN
+  // Esto evita que el navegador cambie la URL a trycloudflare.com
   if (cleanPath.startsWith('anime/video')) {
-    console.log(` Redirecting video to: ${targetUrl}`);
+    console.log(`🎬 Streaming video: ${targetUrl}`);
     
-    // Estos headers ayudan a que el navegador maneje mejor la conexión directa
-    // y evitan que Cloudflare interprete mal las peticiones de rango
-    res.writeHead(302, {
-      Location: targetUrl,
-      'Cache-Control': 'no-store, no-cache, must-revalidate',
-      'Pragma': 'no-cache',
-      'Access-Control-Allow-Origin': '*'
-    });
-    return res.end();
+    try {
+      const response = await fetch(targetUrl, {
+        method: req.method,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Range': req.headers['range'] || '', // Permite seek/pausa
+          'Accept': '*/*',
+        },
+      });
+
+      // Reenviar headers críticos del video al navegador
+      const videoHeaders = {};
+      ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'].forEach(h => {
+        const val = response.headers.get(h);
+        if (val) videoHeaders[h] = val;
+      });
+
+      res.writeHead(response.status, videoHeaders);
+      
+      // Pipear bytes directamente (sin cargar todo en memoria)
+      const stream = response.body;
+      if (stream) {
+        for await (const chunk of stream) {
+          res.write(chunk);
+        }
+      }
+      return res.end();
+      
+    } catch (err) {
+      console.error('❌ Error streaming video:', err.message);
+      return res.status(500).json({ error: 'Error al transmitir video' });
+    }
   }
 
-  // 🔍 PARA BÚSQUEDAS/DATOS: Proxy normal con JSON
+  // 🔍 PARA BÚSQUEDAS/DATOS JSON: Proxy normal
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     'Accept': 'application/json',
@@ -73,7 +97,7 @@ export default async function handler(req, res) {
       return res.status(response.status).json(data);
     }
 
-    // Fallback seguro
+    // Fallback seguro para otros tipos
     const text = await response.text();
     return res.status(response.status).send(text);
 
