@@ -6,28 +6,50 @@ let cacheTime = 0;
 
 async function getBackend() {
   const now = Date.now();
-  // Aumentar el tiempo de cacheo a 5 minutos (300000 ms) para no sobrecargar el Gist
-  if (cachedUrl && now - cacheTime < 300000) return cachedUrl;
+  if (cachedUrl && now - cacheTime < 300000) return cachedUrl; // 5 minutos
   
   try {
-    // Forzar recarga del Gist con timestamp
     const res = await fetch(`${GIST_URL}?t=${now}`);
-    const data = await res.json();
-    cachedUrl = data.tunnel?.replace(/\/$/, '');
+    
+    if (!res.ok) {
+      console.error(`[GIST] Error HTTP: ${res.status}`);
+      return cachedUrl || null;
+    }
+
+    const rawText = await res.text(); // Leer como texto plano
+    let data;
+    try {
+      data = JSON.parse(rawText); // Intentar parsear
+    } catch (parseErr) {
+      console.error('[GIST] JSON inválido:', rawText);
+      return cachedUrl || null;
+    }
+
+    // Validar que tenga la propiedad tunnel y sea una URL válida
+    const tunnel = data?.tunnel;
+    if (typeof tunnel !== 'string' || !tunnel.startsWith('https://')) {
+      console.error('[GIST] URL inválida en Gist:', tunnel);
+      return cachedUrl || null;
+    }
+
+    cachedUrl = tunnel.replace(/\/$/, ''); // Quitar slash final
     cacheTime = now;
     console.log(`[PROXY] Backend actualizado: ${cachedUrl}`);
     return cachedUrl;
   } catch (e) {
-    console.error('Error Gist:', e.message);
+    console.error('[GIST] Error general:', e.message);
     return cachedUrl || null;
   }
 }
 
 export default async function handler(req, res) {
   const backend = await getBackend();
-  if (!backend) return res.status(503).json({ error: 'Servidor no disponible' });
+  if (!backend) {
+    console.error('[PROXY] No se pudo obtener backend');
+    return res.status(503).json({ error: 'Servidor no disponible o URL inválida' });
+  }
 
-  // Reconstruir ruta eliminando 'api' si está presente
+  // Reconstruir ruta
   let segments = req.query.path || [];
   if (!Array.isArray(segments)) segments = [segments];
   if (segments.length > 0 && segments[0] === 'api') segments = segments.slice(1);
@@ -37,9 +59,7 @@ export default async function handler(req, res) {
   const queryParams = new URLSearchParams(req.query).toString();
   const targetUrl = queryParams ? `${baseUrl}?${queryParams}` : baseUrl;
 
-  // 🎬 PARA VIDEOS: REDIRECCIÓN 302 (Para evitar timeout de Vercel)
-  // Esta redirección será manejada internamente por el iframe, 
-  // manteniendo la URL principal de Vercel intacta.
+  // Redirección 302 para videos
   if (cleanPath.startsWith('anime/video')) {
     console.log(`🎬 Redirecting video to: ${targetUrl}`);
     res.writeHead(302, { 
@@ -50,7 +70,7 @@ export default async function handler(req, res) {
     return res.end();
   }
 
-  // 🔍 PARA BÚSQUEDAS/DATOS JSON: Proxy normal
+  // Proxy para JSON
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     'Accept': 'application/json',
@@ -74,7 +94,6 @@ export default async function handler(req, res) {
       return res.status(response.status).json(data);
     }
 
-    // Fallback seguro
     const text = await response.text();
     return res.status(response.status).send(text);
 
